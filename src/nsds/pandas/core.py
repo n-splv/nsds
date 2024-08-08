@@ -1,3 +1,5 @@
+from itertools import chain
+
 from IPython.display import display
 import pandas as pd
 from pandas.core.generic import NDFrame
@@ -64,10 +66,13 @@ def merge_insert_at(df_l: pd.DataFrame,
     if insert_index < 0:
         insert_index = df_l.shape[1] + 1 + insert_index
 
-    columns = (
-        df_l.columns[:insert_index].tolist()
-        + df_r.columns.difference(df_l.columns).tolist()
-        + df_l.columns[insert_index:].tolist()
+    # Preserve column order from df_r
+    columns_to_add = (col for col in df_r.columns if col not in df_l.columns)
+
+    columns = chain(
+        df_l.columns[:insert_index],
+        columns_to_add,
+        df_l.columns[insert_index:],
     )
     return pd.merge(df_l, df_r, **kwargs)[columns]
 
