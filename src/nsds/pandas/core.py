@@ -5,37 +5,6 @@ import pandas as pd
 from pandas.core.generic import NDFrame
 
 
-class DataFrameDisplay:
-    """
-    TODO
-    paginate: bool | int = False
-    style_numbers: bool = True
-    """
-
-    @staticmethod
-    def show(data: pd.DataFrame | pd.Series,
-             nrows: int = None,
-             ncols: int = None):
-        context = (
-            "display.max_colwidth", None,
-            "display.max_rows", nrows,
-            "display.max_columns", ncols
-        )
-        with pd.option_context(*context):
-            display(data)
-
-    @staticmethod
-    def preview(df: pd.DataFrame | pd.Series,
-                min_rows: int = 4):
-        context = ("display.min_rows", min_rows, "display.max_rows", min_rows)
-        with pd.option_context(*context):
-            display(df)
-
-    @staticmethod
-    def style_numbers(df: pd.DataFrame):
-        display(df.style.format(thousands=",", precision=2))
-
-
 class Percentiles:
     # 0.1%, 0.2% ... 1%
     bottom_one = [i / 1000 for i in range(1, 11)]
