@@ -12,7 +12,7 @@ def recursively_remove_key(d, key_to_remove):
 
 
 def append_datetime_to_filename(filename: str) -> str:
-    date_string = format(dt.datetime.now(), "_%Y%m%d_%H%M%S")
+    date_string = format(dt.datetime.utcnow(), "_%Y%m%d_%H%M%S")
     dot_index = filename.find(".")
     if dot_index == -1:
         return filename + date_string
