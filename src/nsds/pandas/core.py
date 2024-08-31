@@ -1,10 +1,11 @@
+import datetime as dt
 from itertools import chain
 
 from IPython.display import display
 import pandas as pd
 from pandas.core.generic import NDFrame
 
-from nsds.utils import append_datetime_to_filename
+from nsds.utils import add_datetime_to_filename
 
 
 class Percentiles:
@@ -75,12 +76,39 @@ class PandasExtensions(NDFrame):
     def sortd(self, *args, **kwargs):
         return self.sort_values(*args, ascending=False, **kwargs)
 
-    def to_csv_(self, *args, add_date_to_filename: bool = False, **kwargs):
-        if add_date_to_filename:
-            filename = kwargs.pop("path_or_buf", None) or args[0]
-            args = (append_datetime_to_filename(filename), *args[1:])
+    def to_csv_(self,
+                *args,
+                add_date_to_filename: bool | str = False,
+                **kwargs):
+        """
+        Saves to csv with an encoding that is more reliable for Excel.
 
-        return self.to_csv(*args, index=False, encoding="utf_8_sig", **kwargs)
+        If `add_date_to_filename` is True, then the current UTC time will
+        be added to the filename. This argument can also be a name of a datetime
+        column (only for a DataFrame) - in such case, its maximum value will be
+        used.
+        """
+
+        kwargs.setdefault("index", False)
+        kwargs.setdefault("encoding", "utf_8_sig")
+        filename = kwargs.pop("path_or_buf", None) or args[0]
+
+        if isinstance(add_date_to_filename, str):
+            try:
+                self[add_date_to_filename].dt  # noqa check column
+                filename = add_datetime_to_filename(
+                    filename,
+                    self[add_date_to_filename].max()
+                )
+            except (KeyError, AttributeError):
+                raise KeyError(f"No datetime column '{add_date_to_filename}'")
+
+        elif add_date_to_filename is True:
+            filename = add_datetime_to_filename(filename, dt.datetime.utcnow())
+
+        args = (filename, *args[1:])
+
+        return self.to_csv(*args, **kwargs)
 
     def vc(self,
            as_index: bool = True,
