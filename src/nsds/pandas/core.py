@@ -1,11 +1,10 @@
-import datetime as dt
 from itertools import chain
 
 from IPython.display import display
 import pandas as pd
 from pandas.core.generic import NDFrame
 
-from nsds.utils import add_datetime_to_filename
+from nsds.utils import add_datetime_to_filename, naive_utcnow
 
 
 class Percentiles:
@@ -104,7 +103,7 @@ class PandasExtensions(NDFrame):
                 raise KeyError(f"No datetime column '{add_date_to_filename}'")
 
         elif add_date_to_filename is True:
-            filename = add_datetime_to_filename(filename, dt.datetime.utcnow())
+            filename = add_datetime_to_filename(filename, naive_utcnow())
 
         args = (filename, *args[1:])
 
