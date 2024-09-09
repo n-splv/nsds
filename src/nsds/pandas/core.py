@@ -73,6 +73,11 @@ class PandasExtensions(NDFrame):
         return self.sort_values(*args, **kwargs)
 
     def sortd(self, *args, **kwargs):
+        if kwargs.get("ascending") is not None:
+            raise ValueError(
+                "`sortd` is always descending. "
+                "If you want to use the keyword argument, use `sort_values`"
+            )
         return self.sort_values(*args, ascending=False, **kwargs)
 
     def to_csv_(self,
