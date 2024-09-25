@@ -67,7 +67,7 @@ class PandasExtensions(NDFrame):
             "display.max_columns", ncols
         )
         with pd.option_context(*context):
-            display(self)
+            display(self.iloc[:nrows])
 
     def sort(self, *args, **kwargs):
         return self.sort_values(*args, **kwargs)
@@ -145,7 +145,7 @@ class PandasExtensions(NDFrame):
         }, index=count.index)
 
         if show_cumulative:
-            df.insert(1, "counts_cumulative", count.cumsum())
+            df.insert(1, "count_cumulative", count.cumsum())
             df.insert(3, "percentage_cumulative", percentage.cumsum())
 
         if min_bin_size > 1:
