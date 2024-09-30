@@ -134,6 +134,7 @@ class PandasExtensions(NDFrame):
                 .groupby(self.columns.tolist(), dropna=dropna)
                 .size()
                 .rename("count")
+                .sort_values(ascending=False)
             )
         else:
             raise TypeError
