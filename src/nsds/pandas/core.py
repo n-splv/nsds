@@ -4,7 +4,7 @@ from IPython.display import display
 import pandas as pd
 from pandas.core.generic import NDFrame
 
-from nsds.utils import add_datetime_to_filename, naive_utcnow
+from nsds.utils import datetime_utils as dtu
 
 
 class Percentiles:
@@ -100,7 +100,7 @@ class PandasExtensions(NDFrame):
         if isinstance(add_date_to_filename, str):
             try:
                 self[add_date_to_filename].dt  # noqa check column
-                filename = add_datetime_to_filename(
+                filename = dtu.add_datetime_to_filename(
                     filename,
                     self[add_date_to_filename].max()
                 )
@@ -108,7 +108,7 @@ class PandasExtensions(NDFrame):
                 raise KeyError(f"No datetime column '{add_date_to_filename}'")
 
         elif add_date_to_filename is True:
-            filename = add_datetime_to_filename(filename, naive_utcnow())
+            filename = dtu.add_datetime_to_filename(filename, dtu.naive_utcnow)
 
         args = (filename, *args[1:])
 
