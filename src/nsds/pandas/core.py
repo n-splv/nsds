@@ -1,4 +1,5 @@
 from itertools import chain
+from pathlib import Path
 
 from IPython.display import display
 import pandas as pd
@@ -48,7 +49,22 @@ def merge_insert_at(df_l: pd.DataFrame,
     return pd.merge(df_l, df_r, **kwargs)[columns]
 
 
-class PandasExtensions(NDFrame):
+def read_csvs(file_mask: str,
+              add_filename_column: bool = False,
+              **kwargs) -> pd.DataFrame:
+
+    df_generator = (
+        (
+            pd.read_csv(filepath, **kwargs)
+            .assign(**{"_file": filepath.name} if add_filename_column else {})
+        )
+        for filepath in Path().glob(file_mask)
+    )
+
+    return pd.concat(df_generator, ignore_index=True)
+
+
+class NDFrameExtensions(NDFrame):
 
     def explode_all(self, *args, **kwargs) -> NDFrame:
         if isinstance(self, pd.DataFrame):
@@ -69,10 +85,10 @@ class PandasExtensions(NDFrame):
         with pd.option_context(*context):
             display(self.iloc[:nrows])
 
-    def sort(self, *args, **kwargs):
+    def sort(self, *args, **kwargs) -> NDFrame:
         return self.sort_values(*args, **kwargs)
 
-    def sortd(self, *args, **kwargs):
+    def sortd(self, *args, **kwargs) -> NDFrame:
         if kwargs.get("ascending") is not None:
             raise ValueError(
                 "`sortd` is always descending. "
@@ -116,7 +132,7 @@ class PandasExtensions(NDFrame):
 
     def vc(self,
            as_index: bool = True,
-           dropna: bool = True,
+           dropna: bool = False,
            min_bin_size: int = 1,
            show_cumulative: bool = False) -> pd.DataFrame:
         """
@@ -161,7 +177,7 @@ class PandasExtensions(NDFrame):
 
 def init_pandas_extensions():
     """ No overrides, only new methods """
-    extensions = set(dir(PandasExtensions)) - set(dir(NDFrame))
+    extensions = set(dir(NDFrameExtensions)) - set(dir(NDFrame))
     for ext_name in extensions:
-        setattr(pd.DataFrame, ext_name, getattr(PandasExtensions, ext_name))
-        setattr(pd.Series, ext_name, getattr(PandasExtensions, ext_name))
+        setattr(pd.DataFrame, ext_name, getattr(NDFrameExtensions, ext_name))
+        setattr(pd.Series, ext_name, getattr(NDFrameExtensions, ext_name))
