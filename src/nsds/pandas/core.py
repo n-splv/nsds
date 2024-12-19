@@ -1,4 +1,5 @@
 from itertools import chain
+from functools import reduce
 from pathlib import Path
 
 from IPython.display import display
@@ -53,6 +54,9 @@ def read_csvs(file_mask: str,
               add_filename_column: bool = False,
               **kwargs) -> pd.DataFrame:
 
+    def _concat(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+        return pd.concat([df1, df2], ignore_index=True)
+
     df_generator = (
         (
             pd.read_csv(filepath, **kwargs)
@@ -61,7 +65,7 @@ def read_csvs(file_mask: str,
         for filepath in Path().glob(file_mask)
     )
 
-    return pd.concat(df_generator, ignore_index=True)
+    return reduce(_concat, df_generator)
 
 
 class NDFrameExtensions(NDFrame):
