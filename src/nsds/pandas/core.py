@@ -1,12 +1,17 @@
-from itertools import chain
-from functools import reduce
+from itertools import chain, starmap
+from functools import partial, reduce
 from pathlib import Path
+from typing import Callable, Iterator
 
 from IPython.display import display
 import pandas as pd
 from pandas.core.generic import NDFrame
+from tqdm.auto import tqdm
 
-from nsds.utils import datetime_utils as dtu
+from nsds.utils import (
+    datetime_utils as dtu,
+    parameter_names
+)
 
 
 class Percentiles:
@@ -70,10 +75,56 @@ def read_csvs(file_mask: str,
 
 class NDFrameExtensions(NDFrame):
 
+    def apply_row_wise[T](self,
+                          func: Callable[..., T],
+                          show_progress: bool = True,
+                          **kwargs) -> Iterator[T]:
+        """
+        Infer non-keyword-only arguments from function signature
+        to specify dataframe columns
+        """
+        if any(kwargs):
+            func = partial(func, **kwargs)
+        values = self[parameter_names(func)].values
+        if values.shape[0] < 2:
+            show_progress = False
+        if show_progress:
+            values = tqdm(values)
+        return starmap(func, values)
+
     def explode_all(self, *args, **kwargs) -> NDFrame:
         if isinstance(self, pd.DataFrame):
             kwargs |= {"column": self.columns.tolist()}
         return self.explode(*args, **kwargs)
+    
+    def memory_mb(self) -> pd.Series | float:
+        return self.memory_usage(deep=True) / 1024 ** 2
+
+    def missing(self: pd.DataFrame | pd.Series) -> pd.DataFrame:
+        """
+        Detailed report on the missing values
+        """
+
+        # Series doesn't have .select_dtypes method
+        if isinstance(self, pd.Series):
+            data = self.to_frame()
+        else:
+            data = self
+
+        result = reduce(
+            lambda l, r: pd.merge(l, r, left_index=True, right_index=True, how='left'),
+            (
+                data.isna().sum().rename('isna'),
+                data.select_dtypes((int, float)).eq(0).sum().rename('eq0'),
+                data.select_dtypes('object').eq('').sum().rename('empty_str'),
+            )
+        )
+        result = result.dropna(axis=1, how='all')
+        i = 1
+        for col in result.columns:
+            result.insert(i, f'{col}_pct', result[col].div(data.shape[0]).mul(100).round(2))
+            i += 2
+        return result
 
     def preview(self, min_rows: int = 4):
         context = ("display.min_rows", min_rows, "display.max_rows", min_rows)

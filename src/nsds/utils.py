@@ -1,5 +1,7 @@
 import datetime as dt
 from decimal import Decimal, ROUND_HALF_UP
+import inspect
+from typing import Callable
 
 import numpy as np
 from pandas import Timestamp as pd_timestamp
@@ -59,6 +61,17 @@ def gini_inequality_coefficient(x, w=None):
         return (n + 1 - 2 * np.sum(cumx) / cumx[-1]) / n
 
 
+def parameter_names(
+    f: Callable,
+    exclude: tuple[inspect._ParameterKind] = (inspect.Parameter.KEYWORD_ONLY,)
+) -> list[str]:
+    return [
+        name
+        for name, param in inspect.signature(f).parameters.items()
+        if not param.kind in exclude
+    ]
+
+
 def recursively_remove_key(d, key_to_remove):
     """ https://stackoverflow.com/a/58938747 """
     if isinstance(d, dict):
@@ -67,6 +80,17 @@ def recursively_remove_key(d, key_to_remove):
                 del d[key]
             else:
                 recursively_remove_key(d[key], key_to_remove)
+
+
+def __rename_variable(old_name: str, new_name: str):
+    """
+    Doesn't work in jupyter, probably due to different scope
+    """
+    if globals().get(new_name):
+        raise NameError(f"{new_name} is already used")
+    elif new_name in dir(__builtins__):
+        raise NameError(f"{new_name} is a builtin")
+    globals()[new_name] = globals().pop(old_name)
 
 
 def round_half_up(value: float, decimals: int) -> float:
