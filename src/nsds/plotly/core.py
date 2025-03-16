@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
-from numpy.ma.core import max_val
 from plotly.subplots import make_subplots
 from sklearn.metrics import r2_score
 
