@@ -24,4 +24,9 @@ def r2_adjusted(y_true: npt.NDArray[int | float],
                 sample_weight: npt.NDArray[int | float] = None) -> np.float64:
     n = y_true.shape[0]
     r2 = r2_score(y_true, y_pred, sample_weight=sample_weight)
-    return 1 - (1 - r2) * ((n - 1) / (n - n_features - 1))
+    return (
+            1 -
+            (1 - r2) *
+            (n - 1) /
+            (n - n_features - 1)
+    )
