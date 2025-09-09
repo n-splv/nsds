@@ -13,6 +13,14 @@ from nsds.utils import (
     parameter_names
 )
 
+__all__ = (
+    "dt_group",
+    "init_pandas_extensions",
+    "merge_insert_at",
+    "percentiles",
+    "set_pandas_options",
+)
+
 
 class Percentiles:
     # 0.1%, 0.2% ... 1%
@@ -112,17 +120,17 @@ class NDFrameExtensions(NDFrame):
             data = self
 
         result = reduce(
-            lambda l, r: pd.merge(l, r, left_index=True, right_index=True, how='left'),
+            lambda l, r: pd.merge(l, r, left_index=True, right_index=True, how="left"),
             (
-                data.isna().sum().rename('isna'),
-                data.select_dtypes((int, float)).eq(0).sum().rename('eq0'),
-                data.select_dtypes('object').eq('').sum().rename('empty_str'),
+                data.isna().sum().rename("isna"),
+                data.select_dtypes((int, float)).eq(0).sum().rename("eq0"),
+                data.select_dtypes("object").eq("").sum().rename("empty_str"),
             )
         )
-        result = result.dropna(axis=1, how='all')
+        result = result.dropna(axis=1, how="all")
         i = 1
         for col in result.columns:
-            result.insert(i, f'{col}_pct', result[col].div(data.shape[0]).mul(100).round(2))
+            result.insert(i, f"{col}_pct", result[col].div(data.shape[0]).mul(100).round(2))
             i += 2
         return result
 
@@ -178,7 +186,7 @@ class NDFrameExtensions(NDFrame):
             except (KeyError, AttributeError):
                 raise KeyError(f"No datetime column '{add_date_to_filename}'")
 
-        elif add_date_to_filename is True:
+        elif add_date_to_filename:
             filename = dtu.add_datetime_to_filename(filename, dtu.naive_utcnow)
 
         args = (filename, *args[1:])
@@ -232,7 +240,14 @@ class NDFrameExtensions(NDFrame):
 
 def init_pandas_extensions():
     """ No overrides, only new methods """
+    tqdm.pandas()
+
     extensions = set(dir(NDFrameExtensions)) - set(dir(NDFrame))
     for ext_name in extensions:
         setattr(pd.DataFrame, ext_name, getattr(NDFrameExtensions, ext_name))
         setattr(pd.Series, ext_name, getattr(NDFrameExtensions, ext_name))
+
+
+def set_pandas_options():
+    pd.set_option("display.float_format", lambda x: format(x, ",.2f"))
+    pd.set_option("future.no_silent_downcasting", True)
