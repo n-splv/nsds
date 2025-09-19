@@ -19,6 +19,7 @@ __all__ = (
     "merge_insert_at",
     "percentiles",
     "set_pandas_options",
+    "read_csv_pyarrow",
 )
 
 
@@ -79,6 +80,9 @@ def read_csvs(file_mask: str,
     )
 
     return reduce(_concat, df_generator)
+
+
+read_csv_pyarrow = partial(pd.read_csv, dtype_backend="pyarrow", engine="pyarrow")
 
 
 class NDFrameExtensions(NDFrame):
