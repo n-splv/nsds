@@ -19,6 +19,7 @@ __all__ = (
     "merge_insert_at",
     "percentiles",
     "set_pandas_options",
+    "read_csv_pyarrow",
 )
 
 
@@ -81,11 +82,14 @@ def read_csvs(file_mask: str,
     return reduce(_concat, df_generator)
 
 
+read_csv_pyarrow = partial(pd.read_csv, dtype_backend="pyarrow", engine="pyarrow")
+
+
 class NDFrameExtensions(NDFrame):
 
     def apply_row_wise[T](self,
                           func: Callable[..., T],
-                          show_progress: bool = True,
+                          show_progress: bool = False,
                           **kwargs) -> Iterator[T]:
         """
         Infer non-keyword-only arguments from function signature
@@ -94,8 +98,6 @@ class NDFrameExtensions(NDFrame):
         if any(kwargs):
             func = partial(func, **kwargs)
         values = self[parameter_names(func)].values
-        if values.shape[0] < 2:
-            show_progress = False
         if show_progress:
             values = tqdm(values)
         return starmap(func, values)
