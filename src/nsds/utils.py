@@ -1,6 +1,7 @@
 import datetime as dt
 from decimal import Decimal, ROUND_HALF_UP
 import inspect
+import subprocess
 from typing import Callable
 
 import numpy as np
@@ -103,3 +104,8 @@ def round_half_up(value: float, decimals: int) -> float:
         .quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         / multiplier
     )
+
+
+def show_mac_notification(message: str, title: str = "Notification"):
+    script = f'display notification "{message}" with title "{title}"'
+    subprocess.run(["osascript", "-e", script])
