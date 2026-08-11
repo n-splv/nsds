@@ -1,9 +1,4 @@
-"""
-TODO better store config in a file
-"""
-
 import logging.config
-
 
 CONFIG = {
     'version': 1,
@@ -26,5 +21,5 @@ CONFIG = {
 }
 
 
-def configure_logging():
+def configure_logging() -> None:
     logging.config.dictConfig(CONFIG)

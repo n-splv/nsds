@@ -1,8 +1,13 @@
 .idea/
 .env
+.envrc
 .env_test
 __pycache__/
 volumes/
 .DS_Store
 drafts/
 dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage

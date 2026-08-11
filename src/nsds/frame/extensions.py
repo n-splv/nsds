@@ -1,91 +1,27 @@
-from itertools import chain, starmap
+from collections.abc import Callable, Iterator
 from functools import partial, reduce
-from pathlib import Path
-from typing import Callable, Iterator
+from itertools import starmap
 
-from IPython.display import display
 import pandas as pd
 from pandas.core.generic import NDFrame
-from tqdm.auto import tqdm
 
-from nsds.utils import (
-    datetime_utils as dtu,
-    parameter_names
-)
-
-__all__ = (
-    "dt_group",
-    "init_pandas_extensions",
-    "merge_insert_at",
-    "percentiles",
-    "set_pandas_options",
-    "read_csv_pyarrow",
-)
+from nsds._compat import TEXT_DTYPES
+from nsds._deps import require
+from nsds.utils.dates import datetime_utils as dtu
+from nsds.utils.introspect import parameter_names
 
 
-class Percentiles:
-    # 0.1%, 0.2% ... 1%
-    bottom_one = [i / 1000 for i in range(1, 11)]
-
-    # 1%, 2% ... 10%
-    bottom_ten = [i / 100 for i in range(1, 11)]
-
-    # 99.0%, 99.1% ... 99.9%
-    top_one = [i / 1000 for i in range(990, 1000)]
-
-    # 90%, 91% ... 99%
-    top_ten = [i / 100 for i in range(90, 100)]
-
-
-percentiles = Percentiles()
-
-
-def dt_group(key: str, freq: str) -> pd.Grouper:
-    return pd.Grouper(key=key, freq=freq)
-
-
-def merge_insert_at(df_l: pd.DataFrame,
-                    df_r: pd.DataFrame,
-                    insert_index: int,
-                    **kwargs) -> pd.DataFrame:
-
-    # Convert negative index to positive
-    if insert_index < 0:
-        insert_index = df_l.shape[1] + 1 + insert_index
-
-    # Preserve column order from df_r
-    columns_to_add = (col for col in df_r.columns if col not in df_l.columns)
-
-    columns = chain(
-        df_l.columns[:insert_index],
-        columns_to_add,
-        df_l.columns[insert_index:],
-    )
-    return pd.merge(df_l, df_r, **kwargs)[columns]
-
-
-def read_csvs(file_mask: str,
-              add_filename_column: bool = False,
-              **kwargs) -> pd.DataFrame:
-
-    def _concat(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
-        return pd.concat([df1, df2], ignore_index=True)
-
-    df_generator = (
-        (
-            pd.read_csv(filepath, **kwargs)
-            .assign(**{"_file": filepath.name} if add_filename_column else {})
-        )
-        for filepath in Path().glob(file_mask)
-    )
-
-    return reduce(_concat, df_generator)
-
-
-read_csv_pyarrow = partial(pd.read_csv, dtype_backend="pyarrow", engine="pyarrow")
+def _display(obj: object) -> None:
+    require("IPython.display", "notebook").display(obj)
 
 
 class NDFrameExtensions(NDFrame):
+    """
+    Extra methods that `install()` attaches to `pd.DataFrame` and `pd.Series`.
+
+    Static analysers cannot see monkey-patched attributes, so editors will not
+    autocomplete these on a DataFrame - Jupyter's runtime completion will.
+    """
 
     def apply_row_wise[T](self,
                           func: Callable[..., T],
@@ -99,14 +35,14 @@ class NDFrameExtensions(NDFrame):
             func = partial(func, **kwargs)
         values = self[parameter_names(func)].values
         if show_progress:
-            values = tqdm(values)
+            values = require("tqdm.auto", "notebook").tqdm(values)
         return starmap(func, values)
 
     def explode_all(self, *args, **kwargs) -> NDFrame:
         if isinstance(self, pd.DataFrame):
             kwargs |= {"column": self.columns.tolist()}
         return self.explode(*args, **kwargs)
-    
+
     def memory_mb(self) -> pd.Series | float:
         return self.memory_usage(deep=True) / 1024 ** 2
 
@@ -122,11 +58,13 @@ class NDFrameExtensions(NDFrame):
             data = self
 
         result = reduce(
-            lambda l, r: pd.merge(l, r, left_index=True, right_index=True, how="left"),
+            lambda left, right: pd.merge(
+                left, right, left_index=True, right_index=True, how="left"
+            ),
             (
                 data.isna().sum().rename("isna"),
                 data.select_dtypes((int, float)).eq(0).sum().rename("eq0"),
-                data.select_dtypes("object").eq("").sum().rename("empty_str"),
+                data.select_dtypes(TEXT_DTYPES).eq("").sum().rename("empty_str"),
             )
         )
         result = result.dropna(axis=1, how="all")
@@ -139,7 +77,7 @@ class NDFrameExtensions(NDFrame):
     def preview(self, min_rows: int = 4):
         context = ("display.min_rows", min_rows, "display.max_rows", min_rows)
         with pd.option_context(*context):
-            display(self)
+            _display(self)
 
     def show(self, nrows: int = None, ncols: int = None):
         context = (
@@ -148,7 +86,7 @@ class NDFrameExtensions(NDFrame):
             "display.max_columns", ncols
         )
         with pd.option_context(*context):
-            display(self.iloc[:nrows])
+            _display(self.iloc[:nrows])
 
     def sort(self, *args, **kwargs) -> NDFrame:
         return self.sort_values(*args, **kwargs)
@@ -186,7 +124,7 @@ class NDFrameExtensions(NDFrame):
                     self[add_date_to_filename].max()
                 )
             except (KeyError, AttributeError):
-                raise KeyError(f"No datetime column '{add_date_to_filename}'")
+                raise KeyError(f"No datetime column '{add_date_to_filename}'") from None
 
         elif add_date_to_filename:
             filename = dtu.add_datetime_to_filename(filename, dtu.naive_utcnow)
@@ -240,16 +178,13 @@ class NDFrameExtensions(NDFrame):
         return df.round(2)
 
 
-def init_pandas_extensions():
+def extension_names() -> set[str]:
+    return set(dir(NDFrameExtensions)) - set(dir(NDFrame))
+
+
+def install() -> None:
     """ No overrides, only new methods """
-    tqdm.pandas()
-
-    extensions = set(dir(NDFrameExtensions)) - set(dir(NDFrame))
-    for ext_name in extensions:
-        setattr(pd.DataFrame, ext_name, getattr(NDFrameExtensions, ext_name))
-        setattr(pd.Series, ext_name, getattr(NDFrameExtensions, ext_name))
-
-
-def set_pandas_options():
-    pd.set_option("display.float_format", lambda x: format(x, ",.2f"))
-    pd.set_option("future.no_silent_downcasting", True)
+    for name in extension_names():
+        method = getattr(NDFrameExtensions, name)
+        setattr(pd.DataFrame, name, method)
+        setattr(pd.Series, name, method)

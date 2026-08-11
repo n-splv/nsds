@@ -1,20 +1,63 @@
-[tool.poetry]
-name = "nsds"
-version = "0.1.0-alpha.8"
-description = ""
-authors = ["n-splv <nick.maykr@gmail.com>"]
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.10"
-pandas = "^2.2.1"
-ipython = "^8.22.1"
-tqdm = "^4.67.1"
-scikit-learn = "^1.6.1"
-plotly = "^5.24.1"
-itables = "^2.5.2"
-
-
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.10.2,<0.11"]
+build-backend = "uv_build"
+
+[project]
+name = "nsds"
+version = "0.2.0"
+description = "Personal toolkit for daily data-science work in notebooks, locally and on Databricks."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "n-splv", email = "nick.maykr@gmail.com" }]
+requires-python = ">=3.12"
+classifiers = [
+    "Framework :: Jupyter",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    # `read_csv_pyarrow` and the pyarrow dtype backend in `io.sql` both need it,
+    # and every Databricks runtime ships it already
+    "pyarrow>=15",
+]
+
+# Everything beyond pandas is optional and imported lazily, so that a Databricks
+# `%pip install nsds` stays fast and never shadows the runtime's own pyspark.
+[project.optional-dependencies]
+notebook = [
+    "ipython>=8.22",
+    "itables>=2.5",
+    "plotly>=5.24",
+    "python-dotenv>=1.0",
+    "tqdm>=4.67",
+]
+gsheets = ["gspread>=6.0"]
+sql = ["databricks-sql-connector>=3.0"]
+all = ["nsds[gsheets,notebook,sql]"]
+
+[project.urls]
+Homepage = "https://github.com/n-splv/nsds"
+Changelog = "https://github.com/n-splv/nsds/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

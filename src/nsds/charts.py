@@ -2,22 +2,35 @@ from functools import partial
 from typing import NamedTuple
 
 import numpy as np
-from numpy.typing import ArrayLike
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
+from numpy.typing import ArrayLike
 from plotly.subplots import make_subplots
-from sklearn.metrics import r2_score
 
-from nsds.metrics import r2_adjusted
+from nsds.metrics import r2_adjusted, r2_score
 
+AXIS_SCALE_PADDING = 0.05
 
 dual_y_figure = partial(make_subplots, specs=[[{"secondary_y": True}]])
+
+
+class Colors:
+    positive = '#9fc673'
+    neutral = '#f2c862'
+    negative = '#d1444d'
 
 
 class Range(NamedTuple):
     start: int | float
     end: int | float
+
+
+def calculate_axis_range(values: ArrayLike) -> Range:
+    max_value = np.max(values)
+    min_value = np.min(values)
+    padding = (max_value - min_value) * AXIS_SCALE_PADDING
+    return Range(min_value - padding, max_value + padding)
 
 
 def prediction_scatter_plot(df: pd.DataFrame = None,
@@ -41,13 +54,13 @@ def prediction_scatter_plot(df: pd.DataFrame = None,
         r2_adj = r2_adjusted(y_true, y_pred, r2_adj_n_features)
         title += f'\t{r2_adj=:.2f}'
 
-    range_x = calclate_axis_range(y_true)
-    range_y = calclate_axis_range(y_pred)
+    range_x = calculate_axis_range(y_true)
+    range_y = calculate_axis_range(y_pred)
     if equalize_axes:
-        range_x = range_y = [
+        range_x = range_y = Range(
             min(range_x.start, range_y.start),
             max(range_x.end, range_y.end),
-        ]
+        )
 
     for (key, value) in (
         ('range_x', range_x),
@@ -87,13 +100,3 @@ def prediction_scatter_plot(df: pd.DataFrame = None,
             marker_size=marker_size,
         )
     )
-
-
-def calclate_axis_range(values: ArrayLike) -> Range:
-    AXIS_SCALE_PADDING = 0.05
-    max_value = np.max(values)
-    min_value = np.min(values)
-    padding = (max_value - min_value) * AXIS_SCALE_PADDING
-    range_start = min_value - padding
-    range_end = max_value + padding
-    return Range(range_start, range_end)
