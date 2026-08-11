@@ -8,7 +8,13 @@ import pytest
 
 from nsds.io import gsheets as gsheets_module
 from nsds.io import sql as sql_module
-from nsds.io.gsheets import ENV_SERVICE_ACCOUNT_KEY, get_gspread_client
+from nsds.io.gsheets import (
+    ENV_SERVICE_ACCOUNT_KEY,
+    get_gspread_client,
+    overwrite_worksheet,
+    overwrite_worksheet_from_spark,
+    spark_df_to_rows,
+)
 from nsds.io.sql import (
     ENV_ACCESS_TOKEN,
     ENV_HTTP_PATH,
@@ -245,3 +251,138 @@ class TestGetGspreadClient:
     def test_no_credentials_anywhere(self, gspread: MagicMock, tmp_path):
         with pytest.raises(FileNotFoundError, match="No Google credentials found"):
             get_gspread_client(path=tmp_path / "absent.json")
+
+
+class TestOverwriteWorksheet:
+
+    def test_clears_empty_input(self):
+        ws = MagicMock()
+
+        overwrite_worksheet(ws, [])
+
+        ws.clear.assert_called_once_with()
+        ws.update.assert_not_called()
+        ws.resize.assert_not_called()
+
+    def test_resizes_and_writes_in_chunks(self):
+        ws = MagicMock()
+        rows = [["a", "b"], [1, 2], [3, 4], [5, 6]]
+
+        overwrite_worksheet(ws, rows, chunk_rows=2)
+
+        ws.clear.assert_called_once_with()
+        ws.resize.assert_called_once_with(rows=4, cols=2)
+        assert ws.update.call_count == 2
+        first = ws.update.call_args_list[0]
+        assert first.args[0] == [["a", "b"], [1, 2]]
+        assert first.kwargs == {
+            "range_name": "A1",
+            "value_input_option": "USER_ENTERED",
+        }
+        second = ws.update.call_args_list[1]
+        assert second.args[0] == [[3, 4], [5, 6]]
+        assert second.kwargs["range_name"] == "A3"
+
+
+class TestSparkDfToRows:
+
+    def test_casts_special_types_and_fills_nulls(self, monkeypatch: pytest.MonkeyPatch):
+        from types import SimpleNamespace
+
+        class DateType: ...
+        class TimestampType: ...
+        class ArrayType: ...
+        class MapType: ...
+        class StructType: ...
+        class DecimalType: ...
+        class LongType: ...
+
+        def fake_col(name: str):
+            c = MagicMock(name=f"col:{name}")
+            c.cast.return_value.alias.side_effect = (
+                lambda alias: MagicMock(name=f"{name}.cast.alias({alias})")
+            )
+            return c
+
+        F = MagicMock()
+        F.col.side_effect = fake_col
+        F.date_format.return_value.alias.side_effect = (
+            lambda alias: MagicMock(name=f"date_format.alias({alias})")
+        )
+        F.to_json.return_value.alias.side_effect = (
+            lambda alias: MagicMock(name=f"to_json.alias({alias})")
+        )
+
+        prepared = MagicMock()
+        prepared.columns = ["d", "t", "arr", "m", "s", "dec", "n"]
+        prepared.toLocalIterator.return_value = [
+            ("2024-01-02", "2024-01-02 03:04:05", "[1]", '{"a":1}', '{"x":1}', "1.5", None),
+        ]
+
+        sdf = MagicMock()
+        sdf.schema.fields = [
+            SimpleNamespace(name="d", dataType=DateType()),
+            SimpleNamespace(name="t", dataType=TimestampType()),
+            SimpleNamespace(name="arr", dataType=ArrayType()),
+            SimpleNamespace(name="m", dataType=MapType()),
+            SimpleNamespace(name="s", dataType=StructType()),
+            SimpleNamespace(name="dec", dataType=DecimalType()),
+            SimpleNamespace(name="n", dataType=LongType()),
+        ]
+        sdf.select.return_value = prepared
+
+        types = ModuleType("pyspark.sql.types")
+        types.DateType = DateType
+        types.TimestampType = TimestampType
+        types.ArrayType = ArrayType
+        types.MapType = MapType
+        types.StructType = StructType
+        types.DecimalType = DecimalType
+
+        functions = ModuleType("pyspark.sql.functions")
+        functions.col = F.col
+        functions.date_format = F.date_format
+        functions.to_json = F.to_json
+
+        pyspark = ModuleType("pyspark")
+        pyspark_sql = ModuleType("pyspark.sql")
+        pyspark_sql.functions = functions
+        pyspark_sql.types = types
+        pyspark.sql = pyspark_sql
+
+        monkeypatch.setitem(sys.modules, "pyspark", pyspark)
+        monkeypatch.setitem(sys.modules, "pyspark.sql", pyspark_sql)
+        monkeypatch.setitem(sys.modules, "pyspark.sql.functions", functions)
+        monkeypatch.setitem(sys.modules, "pyspark.sql.types", types)
+
+        rows = spark_df_to_rows(sdf)
+
+        assert rows[0] == ["d", "t", "arr", "m", "s", "dec", "n"]
+        assert rows[1] == [
+            "2024-01-02",
+            "2024-01-02 03:04:05",
+            "[1]",
+            '{"a":1}',
+            '{"x":1}',
+            "1.5",
+            "null",
+        ]
+        sdf.select.assert_called_once()
+        assert len(sdf.select.call_args.args) == 7
+        assert F.date_format.called
+        assert F.to_json.call_count == 3
+
+    def test_overwrite_from_spark_wires_through(self, monkeypatch: pytest.MonkeyPatch):
+        ws = MagicMock()
+        sdf = MagicMock()
+        monkeypatch.setattr(
+            gsheets_module,
+            "spark_df_to_rows",
+            lambda sdf, fillna="null": [["h"], [1]],
+        )
+
+        overwrite_worksheet_from_spark(ws, sdf, chunk_rows=10)
+
+        ws.clear.assert_called_once_with()
+        ws.update.assert_called_once()
+        assert ws.update.call_args.args[0] == [["h"], [1]]

@@ -41,7 +41,7 @@ nsds.setup(plotly=False, dotenv=False)   # opt out
 | `nsds.charts` | `prediction_scatter_plot`, `dual_y_figure`, `calculate_axis_range`, `Colors` |
 | `nsds.tables` | `show()` — itables with sensible defaults |
 | `nsds.io.sql` | `read_sql()` |
-| `nsds.io.gsheets` | `get_gspread_client()` |
+| `nsds.io.gsheets` | `get_gspread_client()`, `overwrite_worksheet`, `spark_df_to_rows` |
 | `nsds.metrics` | `r2_score`, `r2_adjusted`, `smape` |
 | `nsds.utils` | `datetime_utils`, `round_half_up`, `gini_inequality_coefficient`, `parameter_names`, `show_mac_notification` |
 | `nsds.runtime` | `RUNTIME_ENV`, `IS_DATABRICKS` |

@@ -3,14 +3,16 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nsds._deps import require
 
 if TYPE_CHECKING:
     import gspread
+    from pyspark.sql import DataFrame as SparkDataFrame
 
 DEFAULT_KEY_PATH = Path.home() / ".config" / "gspread" / "service_account.json"
+DEFAULT_UPDATE_CHUNK_ROWS = 5_000
 
 ENV_SERVICE_ACCOUNT_KEY = "GOOGLE_SERVICE_ACCOUNT_KEY"
 ENV_SECRET_SCOPE = "GSPREAD_SECRET_SCOPE"
@@ -68,3 +70,88 @@ def _read_databricks_secret(scope: str, key: str) -> str:
     if ipython is None or "dbutils" not in ipython.user_ns:
         raise RuntimeError("`dbutils` is only available inside a Databricks notebook")
     return ipython.user_ns["dbutils"].secrets.get(scope=scope, key=key)
+
+
+def overwrite_worksheet(
+    ws: gspread.Worksheet,
+    rows: list[list[Any]],
+    *,
+    chunk_rows: int = DEFAULT_UPDATE_CHUNK_ROWS,
+):
+    """
+    Replace worksheet contents. `rows` is the canonical gspread shape: list of
+    row lists. Values are written as `USER_ENTERED` so numbers/dates parse like
+    UI input. Large payloads are sent in chunks to stay under Sheets API limits.
+    """
+    ws.clear()
+    if not rows:
+        return
+
+    n_cols = max(len(row) for row in rows)
+    ws.resize(rows=len(rows), cols=max(n_cols, 1))
+
+    for start in range(0, len(rows), chunk_rows):
+        chunk = rows[start : start + chunk_rows]
+        ws.update(
+            chunk,
+            range_name=f"A{start + 1}",
+            value_input_option="USER_ENTERED",
+        )
+
+
+def spark_df_to_rows(
+    sdf: SparkDataFrame,
+    *,
+    fillna: str = "null",
+) -> list[list[Any]]:
+    """
+    Spark DataFrame → sheet rows (header + data).
+
+    DATE/TIMESTAMP/ARRAY/MAP/STRUCT/DECIMAL are stringified or cast in Spark so
+    `collect`-style iteration stays JSON-safe on the driver.
+    """
+    from pyspark.sql import functions as F
+    from pyspark.sql.types import (
+        ArrayType,
+        DateType,
+        DecimalType,
+        MapType,
+        StructType,
+        TimestampType,
+    )
+
+    cols = []
+    for field in sdf.schema.fields:
+        col = F.col(field.name)
+        dtype = field.dataType
+        if isinstance(dtype, DateType):
+            cols.append(col.cast("string").alias(field.name))
+        elif isinstance(dtype, TimestampType):
+            cols.append(F.date_format(col, "yyyy-MM-dd HH:mm:ss").alias(field.name))
+        elif isinstance(dtype, (ArrayType, MapType, StructType)):
+            cols.append(F.to_json(col).alias(field.name))
+        elif isinstance(dtype, DecimalType):
+            # string keeps precision; double would round financial/metric values
+            cols.append(col.cast("string").alias(field.name))
+        else:
+            cols.append(col)
+
+    prepared = sdf.select(*cols)
+    rows: list[list[Any]] = [list(prepared.columns)]
+    for row in prepared.toLocalIterator():
+        rows.append([fillna if v is None else v for v in row])
+    return rows
+
+
+def overwrite_worksheet_from_spark(
+    ws: gspread.Worksheet,
+    sdf: SparkDataFrame,
+    *,
+    fillna: str = "null",
+    chunk_rows: int = DEFAULT_UPDATE_CHUNK_ROWS,
+):
+    overwrite_worksheet(
+        ws,
+        spark_df_to_rows(sdf, fillna=fillna),
+        chunk_rows=chunk_rows,
+    )
