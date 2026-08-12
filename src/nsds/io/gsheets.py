@@ -82,13 +82,15 @@ def overwrite_worksheet(
     Replace worksheet contents. `rows` is the canonical gspread shape: list of
     row lists. Values are written as `USER_ENTERED` so numbers/dates parse like
     UI input. Large payloads are sent in chunks to stay under Sheets API limits.
+
+    The grid is only expanded when the data needs more rows/columns — never
+    shrunk, so chart placements on a larger sheet stay put.
     """
     ws.clear()
     if not rows:
         return
 
-    n_cols = max(len(row) for row in rows)
-    ws.resize(rows=len(rows), cols=max(n_cols, 1))
+    _ensure_grid_fits(ws, n_rows=len(rows), n_cols=max(len(row) for row in rows))
 
     for start in range(0, len(rows), chunk_rows):
         chunk = rows[start : start + chunk_rows]
@@ -97,6 +99,13 @@ def overwrite_worksheet(
             range_name=f"A{start + 1}",
             value_input_option="USER_ENTERED",
         )
+
+
+def _ensure_grid_fits(ws: gspread.Worksheet, *, n_rows: int, n_cols: int):
+    resize_rows = n_rows if n_rows > ws.row_count else None
+    resize_cols = n_cols if n_cols > ws.col_count else None
+    if resize_rows is not None or resize_cols is not None:
+        ws.resize(rows=resize_rows, cols=resize_cols)
 
 
 def spark_df_to_rows(

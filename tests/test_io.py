@@ -264,14 +264,14 @@ class TestOverwriteWorksheet:
         ws.update.assert_not_called()
         ws.resize.assert_not_called()
 
-    def test_resizes_and_writes_in_chunks(self):
-        ws = MagicMock()
+    def test_writes_in_chunks_without_shrinking(self):
+        ws = MagicMock(row_count=100, col_count=26)
         rows = [["a", "b"], [1, 2], [3, 4], [5, 6]]
 
         overwrite_worksheet(ws, rows, chunk_rows=2)
 
         ws.clear.assert_called_once_with()
-        ws.resize.assert_called_once_with(rows=4, cols=2)
+        ws.resize.assert_not_called()
         assert ws.update.call_count == 2
         first = ws.update.call_args_list[0]
         assert first.args[0] == [["a", "b"], [1, 2]]
@@ -282,6 +282,14 @@ class TestOverwriteWorksheet:
         second = ws.update.call_args_list[1]
         assert second.args[0] == [[3, 4], [5, 6]]
         assert second.kwargs["range_name"] == "A3"
+
+    def test_expands_grid_when_data_exceeds_sheet(self):
+        ws = MagicMock(row_count=2, col_count=1)
+        rows = [["a", "b", "c"], [1, 2, 3], [4, 5, 6]]
+
+        overwrite_worksheet(ws, rows)
+
+        ws.resize.assert_called_once_with(rows=3, cols=3)
 
 
 class TestSparkDfToRows:
