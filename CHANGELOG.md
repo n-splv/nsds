@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Add `read_sql(..., as_spark=True)` to return a Spark DataFrame on Databricks
+- Ignore `spark.sql.execution.arrow.pyspark.enabled` when the runtime rejects it
+
 ## 0.3.0
 
 - Add `overwrite_worksheet`, `spark_df_to_rows`, and `overwrite_worksheet_from_spark`
