@@ -69,7 +69,25 @@ def _read_sql_spark(query: str,
     if as_spark:
         return sdf
     _enable_arrow_if_available(spark)
-    return sdf.toPandas()
+    return _decimals_as_double(sdf).toPandas()
+
+
+def _decimals_as_double(sdf: SparkDataFrame) -> SparkDataFrame:
+    from pyspark.sql import functions as F
+    from pyspark.sql.types import DecimalType
+
+    # Warehouse DECIMAL becomes Python Decimal in toPandas, which pandas
+    # reports as object — then select_dtypes(include="number") misses cols.
+    casts = []
+    has_decimal = False
+    for field in sdf.schema.fields:
+        col = F.col(field.name)
+        if isinstance(field.dataType, DecimalType):
+            has_decimal = True
+            casts.append(col.cast("double").alias(field.name))
+        else:
+            casts.append(col)
+    return sdf.select(*casts) if has_decimal else sdf
 
 
 def _enable_arrow_if_available(spark: SparkSession):

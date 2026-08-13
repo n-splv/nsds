@@ -72,22 +72,37 @@ def spark(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     session = MagicMock()
     session_class = MagicMock()
     session_class.getActiveSession.return_value = session
+    session.sql.return_value.schema.fields = []
+
+    class DecimalType:
+        pass
 
     pyspark = ModuleType("pyspark")
     pyspark_sql = ModuleType("pyspark.sql")
     pyspark_errors = ModuleType("pyspark.errors")
+    pyspark_functions = ModuleType("pyspark.sql.functions")
+    pyspark_types = ModuleType("pyspark.sql.types")
     pyspark_errors.PySparkException = PySparkException
     pyspark_sql.SparkSession = session_class
+    pyspark_sql.functions = pyspark_functions
+    pyspark_sql.types = pyspark_types
+    pyspark_types.DecimalType = DecimalType
+    pyspark_functions.col = MagicMock(
+        side_effect=lambda name: MagicMock(name=f"col:{name}")
+    )
     pyspark.sql = pyspark_sql
     pyspark.errors = pyspark_errors
 
     monkeypatch.setitem(sys.modules, "pyspark", pyspark)
     monkeypatch.setitem(sys.modules, "pyspark.sql", pyspark_sql)
+    monkeypatch.setitem(sys.modules, "pyspark.sql.functions", pyspark_functions)
+    monkeypatch.setitem(sys.modules, "pyspark.sql.types", pyspark_types)
     monkeypatch.setitem(sys.modules, "pyspark.errors", pyspark_errors)
     monkeypatch.setattr(sql_module, "IS_DATABRICKS", True)
 
     session.session_class = session_class
     session.PySparkException = PySparkException
+    session.DecimalType = DecimalType
     return session
 
 
@@ -177,6 +192,25 @@ class TestReadSqlOnDatabricks:
         spark.sql.assert_called_once_with("SELECT 1", None)
         expected.toPandas.assert_not_called()
         spark.conf.set.assert_not_called()
+
+    def test_casts_decimals_before_to_pandas(self, spark: MagicMock):
+        from types import SimpleNamespace
+
+        prepared = MagicMock(name="cast-df")
+        prepared.toPandas.return_value = pd.DataFrame({"amount": [1.5], "name": ["a"]})
+        sdf = spark.sql.return_value
+        sdf.schema.fields = [
+            SimpleNamespace(name="amount", dataType=spark.DecimalType()),
+            SimpleNamespace(name="name", dataType=object()),
+        ]
+        sdf.select.return_value = prepared
+
+        result = read_sql("SELECT 1")
+
+        sdf.select.assert_called_once()
+        prepared.toPandas.assert_called_once_with()
+        sdf.toPandas.assert_not_called()
+        assert result["amount"].tolist() == [1.5]
 
     def test_requires_an_active_session(self, spark: MagicMock):
         spark.session_class.getActiveSession.return_value = None
