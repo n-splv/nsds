@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 import os
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import pandas as pd
 
 from nsds._deps import require
 from nsds.runtime import IS_DATABRICKS
+
+if TYPE_CHECKING:
+    from pyspark.sql import DataFrame as SparkDataFrame
+    from pyspark.sql import SparkSession
 
 ENV_SERVER_HOSTNAME = "DATABRICKS_SERVER_HOSTNAME"
 ENV_HTTP_PATH = "DATABRICKS_HTTP_PATH"
@@ -14,9 +20,23 @@ ENV_ACCESS_TOKEN = "DATABRICKS_TOKEN"
 _REQUIRED_CONNECT_ARGS = ("server_hostname", "http_path", "access_token")
 
 
+@overload
 def read_sql(query: str,
              params: dict[str, Any] | None = None,
-             **connect_kwargs) -> pd.DataFrame:
+             *,
+             as_spark: Literal[False] = False,
+             **connect_kwargs) -> pd.DataFrame: ...
+@overload
+def read_sql(query: str,
+             params: dict[str, Any] | None = None,
+             *,
+             as_spark: Literal[True],
+             **connect_kwargs) -> SparkDataFrame: ...
+def read_sql(query: str,
+             params: dict[str, Any] | None = None,
+             *,
+             as_spark: bool = False,
+             **connect_kwargs) -> pd.DataFrame | SparkDataFrame:
     """
     Run a query against Databricks and return a DataFrame.
 
@@ -24,21 +44,43 @@ def read_sql(query: str,
     opened via `databricks-sql-connector`, taking its arguments from
     `connect_kwargs` and falling back to the DATABRICKS_SERVER_HOSTNAME,
     DATABRICKS_HTTP_PATH and DATABRICKS_TOKEN environment variables.
+
+    Pass `as_spark=True` on a cluster to skip `toPandas()` and get a Spark
+    DataFrame. Locally that flag raises.
     """
+    if as_spark and not IS_DATABRICKS:
+        raise RuntimeError("`as_spark=True` is only available on Databricks")
     if IS_DATABRICKS:
-        return _read_sql_spark(query, params)
+        return _read_sql_spark(query, params, as_spark=as_spark)
     return _read_sql_connector(query, params, **connect_kwargs)
 
 
-def _read_sql_spark(query: str, params: dict[str, Any] | None) -> pd.DataFrame:
+def _read_sql_spark(query: str,
+                    params: dict[str, Any] | None,
+                    *,
+                    as_spark: bool) -> pd.DataFrame | SparkDataFrame:
     from pyspark.sql import SparkSession
 
     # `spark` is a notebook global - not visible in imported modules
     spark = SparkSession.getActiveSession()
     if spark is None:
         raise RuntimeError("No active SparkSession")
-    spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
-    return spark.sql(query, params).toPandas()
+    sdf = spark.sql(query, params)
+    if as_spark:
+        return sdf
+    _enable_arrow_if_available(spark)
+    return sdf.toPandas()
+
+
+def _enable_arrow_if_available(spark: SparkSession):
+    from pyspark.errors import PySparkException
+
+    # Speeds up toPandas on older DBR. Serverless / recent runtimes manage Arrow
+    # internally and reject this key with CONFIG_NOT_AVAILABLE.
+    try:
+        spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
+    except PySparkException:
+        pass
 
 
 def _read_sql_connector(query: str,

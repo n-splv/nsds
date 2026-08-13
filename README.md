@@ -40,7 +40,7 @@ nsds.setup(plotly=False, dotenv=False)   # opt out
 | `nsds.frame` | `install()`, `read_csvs`, `read_csv_pyarrow`, `merge_insert_at`, `dt_group`, `percentiles` |
 | `nsds.charts` | `prediction_scatter_plot`, `dual_y_figure`, `calculate_axis_range`, `Colors` |
 | `nsds.tables` | `show()` — itables with sensible defaults |
-| `nsds.io.sql` | `read_sql()` |
+| `nsds.io.sql` | `read_sql()`, `as_spark=True` |
 | `nsds.io.gsheets` | `get_gspread_client()`, `overwrite_worksheet`, `spark_df_to_rows` |
 | `nsds.metrics` | `r2_score`, `r2_adjusted`, `smape` |
 | `nsds.utils` | `datetime_utils`, `round_half_up`, `gini_inequality_coefficient`, `parameter_names`, `show_mac_notification` |
@@ -77,6 +77,7 @@ it opens a `databricks-sql-connector` connection from `DATABRICKS_SERVER_HOSTNAM
 from nsds.io.sql import read_sql
 
 df = read_sql("SELECT * FROM t WHERE day = :day", {"day": "2026-01-01"})
+sdf = read_sql("SELECT * FROM t", as_spark=True)   # Databricks only
 ```
 
 ### On Databricks

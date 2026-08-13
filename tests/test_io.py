@@ -60,6 +60,10 @@ def connector(monkeypatch: pytest.MonkeyPatch, fake_require: Callable) -> MagicM
     return stub
 
 
+class PySparkException(Exception):
+    pass
+
+
 @pytest.fixture
 def spark(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """
@@ -71,14 +75,19 @@ def spark(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
     pyspark = ModuleType("pyspark")
     pyspark_sql = ModuleType("pyspark.sql")
+    pyspark_errors = ModuleType("pyspark.errors")
+    pyspark_errors.PySparkException = PySparkException
     pyspark_sql.SparkSession = session_class
     pyspark.sql = pyspark_sql
+    pyspark.errors = pyspark_errors
 
     monkeypatch.setitem(sys.modules, "pyspark", pyspark)
     monkeypatch.setitem(sys.modules, "pyspark.sql", pyspark_sql)
+    monkeypatch.setitem(sys.modules, "pyspark.errors", pyspark_errors)
     monkeypatch.setattr(sql_module, "IS_DATABRICKS", True)
 
     session.session_class = session_class
+    session.PySparkException = PySparkException
     return session
 
 
@@ -127,6 +136,12 @@ class TestReadSqlLocally:
 
         connector.connect.assert_not_called()
 
+    def test_as_spark_is_rejected(self, connector: MagicMock, env_connection: dict):
+        with pytest.raises(RuntimeError, match="only available on Databricks"):
+            read_sql("SELECT 1", as_spark=True)
+
+        connector.connect.assert_not_called()
+
 
 class TestReadSqlOnDatabricks:
 
@@ -141,6 +156,27 @@ class TestReadSqlOnDatabricks:
         spark.conf.set.assert_called_once_with(
             "spark.sql.execution.arrow.pyspark.enabled", "true"
         )
+
+    def test_continues_when_arrow_config_is_unavailable(self, spark: MagicMock):
+        expected = pd.DataFrame({"a": [1]})
+        spark.conf.set.side_effect = spark.PySparkException("CONFIG_NOT_AVAILABLE")
+        spark.sql.return_value.toPandas.return_value = expected
+
+        result = read_sql("SELECT 1")
+
+        assert result is expected
+        spark.sql.assert_called_once()
+
+    def test_as_spark_skips_to_pandas(self, spark: MagicMock):
+        expected = MagicMock(name="spark-df")
+        spark.sql.return_value = expected
+
+        result = read_sql("SELECT 1", as_spark=True)
+
+        assert result is expected
+        spark.sql.assert_called_once_with("SELECT 1", None)
+        expected.toPandas.assert_not_called()
+        spark.conf.set.assert_not_called()
 
     def test_requires_an_active_session(self, spark: MagicMock):
         spark.session_class.getActiveSession.return_value = None
@@ -381,7 +417,7 @@ class TestSparkDfToRows:
         assert F.to_json.call_count == 3
 
     def test_overwrite_from_spark_wires_through(self, monkeypatch: pytest.MonkeyPatch):
-        ws = MagicMock()
+        ws = MagicMock(row_count=100, col_count=26)
         sdf = MagicMock()
         monkeypatch.setattr(
             gsheets_module,
