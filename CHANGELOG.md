@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Cast Spark `DECIMAL` to `double` in cluster `read_sql()` so spend columns stay numeric in pandas
+
 ## 0.4.0
 
 - Add `read_sql(..., as_spark=True)` to return a Spark DataFrame on Databricks

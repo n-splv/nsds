@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "nsds"
-version = "0.4.0"
+version = "0.4.1"
 description = "Personal toolkit for daily data-science work in notebooks, locally and on Databricks."
 readme = "README.md"
 license = "MIT"
