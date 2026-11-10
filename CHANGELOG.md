@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Locally, `read_sql()` no longer needs `DATABRICKS_TOKEN`: without a token,
+  `credentials_provider` or `auth_type` it authenticates through the Databricks SDK's
+  unified auth (for example OAuth after `databricks auth login`)
+- Add `databricks-sdk` to the `sql` extra
+- Bump the locked `certifi` to 2026.10.23 (GHSA-6q48-6c7w-9gw2)
+
 ## 0.4.1
 
 - Cast Spark `DECIMAL` to `double` in cluster `read_sql()` so spend columns stay numeric in pandas
