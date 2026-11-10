@@ -55,8 +55,14 @@ def connector(monkeypatch: pytest.MonkeyPatch, fake_require: Callable) -> MagicM
     stub.connect.return_value.__exit__.return_value = False
     stub.connection = connection
 
+    sdk_core = MagicMock()
+    stub.sdk_core = sdk_core
+
     monkeypatch.setattr(sql_module, "IS_DATABRICKS", False)
-    monkeypatch.setattr(sql_module, "require", fake_require({"databricks.sql": stub}))
+    monkeypatch.setattr(sql_module, "require", fake_require({
+        "databricks.sql": stub,
+        "databricks.sdk.core": sdk_core,
+    }))
     return stub
 
 
@@ -135,11 +141,10 @@ class TestReadSqlLocally:
     @pytest.mark.parametrize(
         ("provided", "missing"),
         [
-            ({}, ["server_hostname", "http_path", "access_token"]),
-            ({"server_hostname": "host"}, ["http_path", "access_token"]),
-            ({"server_hostname": "host", "http_path": "/p"}, ["access_token"]),
+            ({}, ["server_hostname", "http_path"]),
+            ({"server_hostname": "host"}, ["http_path"]),
         ],
-        ids=["none", "hostname-only", "token-missing"],
+        ids=["none", "hostname-only"],
     )
     def test_reports_missing_connection_arguments(self,
                                                   connector: MagicMock,
@@ -150,6 +155,47 @@ class TestReadSqlLocally:
             read_sql("SELECT 1", **provided)
 
         connector.connect.assert_not_called()
+
+    def test_falls_back_to_sdk_auth_without_a_token(self,
+                                                    connector: MagicMock,
+                                                    no_env_connection: None):
+        with patch.object(pd, "read_sql", return_value=pd.DataFrame()):
+            read_sql("SELECT 1", server_hostname="host", http_path="/p")
+
+        connector.sdk_core.Config.assert_called_once_with(host="https://host")
+        kwargs = connector.connect.call_args.kwargs
+        assert "access_token" not in kwargs
+        config = connector.sdk_core.Config.return_value
+        assert kwargs["credentials_provider"]() is config.authenticate
+
+    def test_sdk_auth_keeps_an_explicit_scheme(self,
+                                               connector: MagicMock,
+                                               no_env_connection: None):
+        with patch.object(pd, "read_sql", return_value=pd.DataFrame()):
+            read_sql("SELECT 1", server_hostname="https://host", http_path="/p")
+
+        connector.sdk_core.Config.assert_called_once_with(host="https://host")
+
+    @pytest.mark.parametrize(
+        "auth",
+        [
+            {"access_token": "token"},
+            {"credentials_provider": MagicMock()},
+            {"auth_type": "databricks-oauth"},
+        ],
+        ids=["token", "credentials-provider", "auth-type"],
+    )
+    def test_explicit_auth_skips_sdk(self,
+                                     connector: MagicMock,
+                                     no_env_connection: None,
+                                     auth: dict):
+        with patch.object(pd, "read_sql", return_value=pd.DataFrame()):
+            read_sql("SELECT 1", server_hostname="host", http_path="/p", **auth)
+
+        connector.sdk_core.Config.assert_not_called()
+        assert connector.connect.call_args.kwargs == {
+            "server_hostname": "host", "http_path": "/p", **auth
+        }
 
     def test_as_spark_is_rejected(self, connector: MagicMock, env_connection: dict):
         with pytest.raises(RuntimeError, match="only available on Databricks"):

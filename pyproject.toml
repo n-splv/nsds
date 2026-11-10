@@ -38,7 +38,7 @@ notebook = [
     "tqdm>=4.67",
 ]
 gsheets = ["gspread>=6.0"]
-sql = ["databricks-sql-connector>=3.0"]
+sql = ["databricks-sdk>=0.20", "databricks-sql-connector>=3.0"]
 all = ["nsds[gsheets,notebook,sql]"]
 
 [project.urls]

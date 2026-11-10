@@ -7,7 +7,7 @@ Personal toolkit for DataScience tasks, runs locally and on Databricks.
 ```bash
 pip install nsds                # core: pandas helpers, metrics, utils
 pip install 'nsds[notebook]'    # plotly, itables, tqdm, IPython, dotenv
-pip install 'nsds[sql]'         # databricks-sql-connector
+pip install 'nsds[sql]'         # databricks-sql-connector, databricks-sdk
 pip install 'nsds[gsheets]'     # gspread
 pip install 'nsds[all]'
 ```
@@ -70,8 +70,14 @@ else in the package is normally typed and ships `py.typed`.
 ### Reading SQL
 
 Same call in both environments. On a cluster it uses the active `SparkSession`; locally
-it opens a `databricks-sql-connector` connection from `DATABRICKS_SERVER_HOSTNAME`,
-`DATABRICKS_HTTP_PATH` and `DATABRICKS_TOKEN`, or from arguments you pass directly.
+it opens a `databricks-sql-connector` connection from `DATABRICKS_SERVER_HOSTNAME`
+and `DATABRICKS_HTTP_PATH`, or from arguments you pass directly.
+
+Locally it authenticates with `DATABRICKS_TOKEN` when set. Otherwise it uses the
+Databricks SDK's unified authentication: after `databricks auth login --host <host>`,
+OAuth needs no token. Set `DATABRICKS_CONFIG_PROFILE` to pick a `~/.databrickscfg`
+profile; the CLI requires it when several profiles share the host.
+An `access_token`, `credentials_provider` or `auth_type` argument overrides both.
 
 ```python
 from nsds.io.sql import read_sql

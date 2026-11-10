@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import pandas as pd
@@ -17,7 +18,8 @@ ENV_SERVER_HOSTNAME = "DATABRICKS_SERVER_HOSTNAME"
 ENV_HTTP_PATH = "DATABRICKS_HTTP_PATH"
 ENV_ACCESS_TOKEN = "DATABRICKS_TOKEN"
 
-_REQUIRED_CONNECT_ARGS = ("server_hostname", "http_path", "access_token")
+_REQUIRED_CONNECT_ARGS = ("server_hostname", "http_path")
+_AUTH_ARGS = ("access_token", "credentials_provider", "auth_type")
 
 
 @overload
@@ -43,7 +45,10 @@ def read_sql(query: str,
     On a cluster the active SparkSession is used. Locally, a connection is
     opened via `databricks-sql-connector`, taking its arguments from
     `connect_kwargs` and falling back to the DATABRICKS_SERVER_HOSTNAME,
-    DATABRICKS_HTTP_PATH and DATABRICKS_TOKEN environment variables.
+    DATABRICKS_HTTP_PATH and DATABRICKS_TOKEN environment variables. Without
+    a token, `credentials_provider` or `auth_type`, it authenticates through
+    the Databricks SDK's unified authentication, for example the OAuth login
+    from `databricks auth login`.
 
     Pass `as_spark=True` on a cluster to skip `toPandas()` and get a Spark
     DataFrame. Locally that flag raises.
@@ -111,8 +116,12 @@ def _read_sql_connector(query: str,
     if missing:
         raise ValueError(
             f"Missing connection arguments: {', '.join(missing)}. "
-            f"Pass them to `read_sql` or set {ENV_SERVER_HOSTNAME}, "
-            f"{ENV_HTTP_PATH} and {ENV_ACCESS_TOKEN}."
+            f"Pass them to `read_sql` or set {ENV_SERVER_HOSTNAME} "
+            f"and {ENV_HTTP_PATH}."
+        )
+    if not any(connect_kwargs.get(name) for name in _AUTH_ARGS):
+        connect_kwargs["credentials_provider"] = sdk_credentials_provider(
+            connect_kwargs["server_hostname"]
         )
 
     with sql.connect(**connect_kwargs) as connection:
@@ -121,6 +130,18 @@ def _read_sql_connector(query: str,
             warnings.filterwarnings("ignore", message="pandas only supports")
             return pd.read_sql(query, params=params, con=connection,
                                dtype_backend="pyarrow")
+
+
+def sdk_credentials_provider(server_hostname: str) -> Callable[[], Callable[[], dict[str, str]]]:
+    """
+    Build a `databricks-sql-connector` credentials provider from the Databricks
+    SDK's unified authentication: OAuth via the Databricks CLI, service-principal
+    environment variables or a `~/.databrickscfg` profile (DATABRICKS_CONFIG_PROFILE).
+    """
+    sdk_core = require("databricks.sdk.core", "sql")
+    host = server_hostname if server_hostname.startswith("https://") else f"https://{server_hostname}"
+    config = sdk_core.Config(host=host)
+    return lambda: config.authenticate
 
 
 def connection_args_from_env() -> dict[str, str]:
