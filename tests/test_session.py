@@ -117,4 +117,4 @@ class TestSetupSteps:
         session_module._load_dotenv()
 
         dotenv.find_dotenv.assert_called_once_with(usecwd=False)
-        dotenv.load_dotenv.assert_called_once_with("/somewhere/.env")
+        dotenv.load_dotenv.assert_called_once_with("/somewhere/.env", override=True)
